@@ -9,7 +9,7 @@ import sys
 from dotenv import load_dotenv
 from rich.console import Console
 
-console = Console(highlight=False)
+console = Console(highlight=False, soft_wrap=True)
 KEY_NAMES = ["ANTHROPIC_API_KEY", "FIRECRAWL_API_KEY", "ELEVENLABS_API_KEY"]
 
 
@@ -70,7 +70,11 @@ def main():
             console.print(f"{name}: [green]OK[/green]")
         except Exception as e:
             failed = True
-            message = redact(f"{type(e).__name__}: {e}").splitlines()[0][:300]
+            if hasattr(e, "status_code") and hasattr(e, "body"):
+                message = f"HTTP {e.status_code}: {e.body}"
+            else:
+                message = f"{type(e).__name__}: {e}"
+            message = redact(message).splitlines()[0][:300]
             console.print(f"{name}: [red]FAILED:[/red] ", end="")
             console.print(message, markup=False)
     sys.exit(1 if failed else 0)
