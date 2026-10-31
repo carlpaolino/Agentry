@@ -1,0 +1,36 @@
+---
+description: Project context for the URL-to-voice-agent builder
+alwaysApply: true
+---
+
+# What this is
+A Python CLI that turns a home-service company's website (HVAC, plumbing, cleaning) into an
+ElevenLabs voice agent that answers its inbound calls, checks whether the caller is a fit,
+shares only approved prices, and captures a lead with a preferred time window.
+
+Stages, one module each, run by build_agent.py:
+crawl.py -> extract.py -> review.py -> prompt_builder.py -> deploy.py
+
+# Ground rules for code here
+- schema.py and clients.py are the contract. Don't rename fields or change the folder layout
+  without being asked. Use clients.client_dir, clients.upsert, save_model and load_model.
+- Every client lives in clients/<slug>/ (layout in clients.py docstring). Never write elsewhere.
+- Each stage implements run(...) exactly as its module docstring says and is idempotent:
+  rerunning must not crawl again, overwrite approved prices, or create a duplicate agent.
+- Keep it simple: plain functions, no async, no web framework, no new dependencies unless asked.
+- Keys come from env (.env is loaded in build_agent.py). Never print or log a key.
+- Print progress with rich, one line per step. On error, say what failed and exit non-zero.
+- After writing a stage, run it and show the output. Don't claim it works without running it.
+
+# APIs (check current docs before guessing any parameter; don't invent fields)
+- Firecrawl Python SDK v2: from firecrawl import Firecrawl; .map(url); .scrape(url, formats=["markdown"]).
+- Anthropic Python SDK: "claude-haiku-5-5" for cheap picks, "claude-sonnet-5-5" for extraction and wording.
+  Use structured outputs for any JSON: client.messages.parse(..., output_format=<PydanticModel>).
+- ElevenLabs Python SDK: client.conversational_ai.agents.create(...) / .update(agent_id=..., ...).
+
+# Safety rules the generated agent must keep (enforced in templates/base.md; don't weaken them)
+- Discloses it's an AI when asked. Never takes payment information.
+- Quotes only operator-APPROVED price items, as ranges, with the quote rule. Never negotiates.
+- Never books or promises a time; captures the preferred window and the callback promise.
+- Emergencies: safety steps first (gas smell -> leave and call the gas company or 911), mark URGENT.
+- When unsure, takes a message.

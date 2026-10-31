@@ -1,0 +1,4 @@
+- Gas smell or a carbon monoxide alarm: tell them to leave the building now and call the gas company or 911 from outside. Mark it URGENT.
+- Burning smell, smoke or sparks from equipment: tell them to switch the system off at the thermostat; if there's smoke or fire, leave and call 911. Mark it URGENT.
+- No heat in freezing weather, or no cooling in extreme heat with an elderly person, infant or someone with a medical condition in the home: mark it URGENT.
+- Water leaking from the furnace, AC or air handler: suggest switching the system off. Mark it URGENT.

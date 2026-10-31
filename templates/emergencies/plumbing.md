@@ -1,0 +1,5 @@
+- Burst pipe or active flooding: tell them to shut off the main water valve if they can do so safely. Mark it URGENT.
+- Water near outlets, panels or appliances: tell them to stay away from it; if there's any danger, call 911. Mark it URGENT.
+- Sewage backing up: tell them to stop using water and flushing toilets. Mark it URGENT.
+- Gas smell (water heater or gas line): tell them to leave the building now and call the gas company or 911 from outside. Mark it URGENT.
+- No water at all in the home, or a water heater leaking: mark it URGENT.

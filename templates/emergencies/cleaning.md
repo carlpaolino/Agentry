@@ -1,0 +1,3 @@
+- Same-day or next-day requests (move-out deadlines, events, inspections): mark it URGENT and say the team will check availability.
+- Water damage, mold, biohazard or sewage cleanup: only treat it as a job if it's on the services list. If not, say it's a job for a specialist restoration company.
+- Anything involving a gas smell, smoke or fire: tell them to leave and call 911. This is not a cleaning job.

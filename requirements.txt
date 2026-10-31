@@ -1,0 +1,6 @@
+anthropic
+firecrawl-py
+elevenlabs
+pydantic>=2
+python-dotenv
+rich
