@@ -4,21 +4,42 @@ alwaysApply: true
 ---
 
 # What this is
-A Python CLI that turns a home-service company's website (HVAC, plumbing, cleaning) into an
-ElevenLabs voice agent that answers its inbound calls, checks whether the caller is a fit,
-shares only approved prices, and captures a lead with a preferred time window.
+A Python tool that turns a home-service company's website (HVAC, plumbing, roofing, lawn care,
+cleaning) plus the operator's call notes into AI receptionists that answer its customers, check whether
+they're a fit, share only approved prices, and capture a lead with a preferred time window.
+
+Two channels, built from the same files and the same template:
+- Chat: Voiceflow web-chat agent for the business's website (main product). voiceflow_deploy.py is
+  planned, not built yet; prompt_builder.render(..., channel="chat") already produces the chat wording.
+- Phone: ElevenLabs voice agent (deploy.py), from prompt_builder.render(..., channel="phone").
 
 Stages, one module each, run by build_agent.py:
 crawl.py -> extract.py -> review.py -> prompt_builder.py -> deploy.py
+- intake.py: website facts + the operator's pasted call notes -> intake.json, plus starting values for
+  policy.json and pricing.json (prices from notes come in UNAPPROVED). An alternative to review.py.
+- demo.py: demo mode for cold calls. Stands in for review: website facts only, prices OFF, a
+  "team will call you back" promise, no owner review (CLI: build_agent.py <url> --demo).
+  Onboarding later replaces it.
+- app.py: Streamlit operator dashboard ("streamlit run app.py", or double-click start.command).
+  Demo (website -> agent + talk link) and Onboard (review facts, who we serve, prices -> live agent).
+  Reads and writes the same clients/<slug>/ files as the CLI; runner.py runs stages and captures output.
+
+Trades: hvac, plumbing, roofing, lawn, cleaning, other. Each has templates/emergencies/<trade>.md
+(fallback hvac.md) inserted at $emergency_rules.
 
 # Ground rules for code here
 - schema.py and clients.py are the contract. Don't rename fields or change the folder layout
   without being asked. Use clients.client_dir, clients.upsert, save_model and load_model.
+- schema.py models: BusinessProfile (profile.json), PricingSheet (pricing.json), FitPolicy (policy.json),
+  Intake (intake.json: owner contact, today's process, baseline numbers for the pitch and the monthly
+  report, won't-quote, booking rules, FAQs, extra lead fields, who gets notified, escalation rules,
+  brand voice). monthly_revenue_at_risk(intake) does the pitch math.
 - Every client lives in clients/<slug>/ (layout in clients.py docstring). Never write elsewhere.
 - Each stage implements run(...) exactly as its module docstring says and is idempotent:
   rerunning must not crawl again, overwrite approved prices, or create a duplicate agent.
-- Keep it simple: plain functions, no async, no web framework, no new dependencies unless asked.
-- Keys come from env (.env is loaded in build_agent.py). Never print or log a key.
+- Keep it simple: plain functions, no async, no new dependencies unless asked. Streamlit (app.py) is the
+  only web framework; stages stay plain functions the CLI and the dashboard both call.
+- Keys come from env (.env is loaded in build_agent.py and app.py). Never print or log a key.
 - Print progress with rich, one line per step. On error, say what failed and exit non-zero.
 - After writing a stage, run it and show the output. Don't claim it works without running it.
 
@@ -26,9 +47,12 @@ crawl.py -> extract.py -> review.py -> prompt_builder.py -> deploy.py
 - Firecrawl Python SDK v2: from firecrawl import Firecrawl; .map(url); .scrape(url, formats=["markdown"]).
 - Anthropic Python SDK: "claude-haiku-5-5" for cheap picks, "claude-sonnet-5-5" for extraction and wording.
   Use structured outputs for any JSON: client.messages.parse(..., output_format=<PydanticModel>).
+  Big all-optional models are rejected as "too complex"; send an all-required mirror and convert back.
 - ElevenLabs Python SDK: client.conversational_ai.agents.create(...) / .update(agent_id=..., ...).
+- Voiceflow: read the API reference (.md pages under https://www.voiceflow.com/docs/api-reference/)
+  before writing any call; use httpx, no new SDK.
 
-# Safety rules the generated agent must keep (enforced in templates/base.md; don't weaken them)
+# Safety rules the generated agent must keep (enforced in templates/base.md for both channels; don't weaken them)
 - Discloses it's an AI when asked. Never takes payment information.
 - Quotes only operator-APPROVED price items, as ranges, with the quote rule. Never negotiates.
 - Never books or promises a time; captures the preferred window and the callback promise.

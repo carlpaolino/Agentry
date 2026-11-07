@@ -1,0 +1,3 @@
+- Fallen tree or large limb on a house, car, driveway or power line: tell them to stay well away from any downed line and call the power company or 911. Mark it URGENT.
+- Irrigation line broken and flooding: suggest shutting off the irrigation or main water valve if it's safe. Mark it URGENT.
+- Most lawn care requests are not emergencies: take the details and the preferred days.

@@ -117,3 +117,44 @@ LEAD_FIELDS = {
     "fit_reason": "One sentence on why",
     "price_discussed": "Any price range the agent shared, or none",
 }
+
+
+# ---------- What the operator learned on the call (discovery + onboarding intake) ----------
+
+class FAQ(BaseModel):
+    question: str
+    answer: str
+
+
+class Intake(BaseModel):
+    # The business
+    business_name: str = ""
+    employee_count: str = ""            # as said: "8", "about 12", "3-5 crews"
+    owner_name: str = ""
+    owner_phone: str = ""
+    owner_email: str = ""
+    # Discovery call: today's process and pain
+    who_answers_today: str = ""         # "owner's cell", "office manager until 5pm"
+    scheduling_tool: str = ""           # Google Calendar, Jobber, Housecall Pro, paper
+    # Baseline numbers (for the pitch math and the monthly report)
+    missed_calls_per_week: Optional[float] = None
+    booking_rate_pct: Optional[float] = None     # of 10 callers, how many book -> 60
+    avg_job_value: Optional[float] = None
+    monthly_call_volume: Optional[float] = None
+    # How the agent should behave for this business
+    will_not_quote: str = ""            # what they won't price over the phone/chat
+    booking_rules: str = ""             # buffer times, crew capacity, lead time, job minimums
+    faqs: list[FAQ] = Field(default_factory=list)
+    lead_extra_fields: list[str] = Field(default_factory=list)   # beyond name/phone/address/issue/urgency
+    notify: str = ""                    # who gets each lead and how ("text Mike at ...")
+    escalation_rules: list[str] = Field(default_factory=list)    # what goes straight to a human
+    brand_voice: str = ""               # casual/formal, phrases they use or avoid
+    notes: str = ""                     # anything else from the call
+
+
+def monthly_revenue_at_risk(intake: "Intake") -> Optional[float]:
+    """Missed calls/week x share that would have booked x average job x 4.33 weeks."""
+    if intake.missed_calls_per_week is None or intake.avg_job_value is None:
+        return None
+    rate = (intake.booking_rate_pct if intake.booking_rate_pct is not None else 100) / 100
+    return intake.missed_calls_per_week * rate * intake.avg_job_value * 4.33

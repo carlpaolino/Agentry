@@ -27,7 +27,7 @@ import clients
 from schema import (REQUIRED_PROFILE_FIELDS, BusinessProfile, ExtractionResult, Fact, ListFact,
                     PricingSheet, Status)
 
-VERTICALS = {"hvac", "plumbing", "cleaning", "other"}
+VERTICALS = {"hvac", "plumbing", "cleaning", "roofing", "lawn", "other"}
 
 
 # Structured outputs rejects ExtractionResult as "too complex" because every field has a default
@@ -67,16 +67,16 @@ class _Extraction(BaseModel):
 STATUS_COLORS = {"found": "green", "inferred": "yellow", "missing": "red", "operator": "cyan"}
 console = Console(highlight=False, soft_wrap=True)
 
-SYSTEM = """You extract facts about a home-service business (HVAC, plumbing, cleaning) from its website pages.
+SYSTEM = """You extract facts about a home-service business (HVAC, plumbing, roofing, lawn care, cleaning) from its website pages.
 The facts will brief a phone receptionist, so a wrong fact is worse than a missing one.
 
 Rules:
 - Use only what the pages state. If a fact isn't there, set status "missing" and value null (empty list for list fields). Never guess or fill in from general knowledge.
 - Every found value cites the page URL it came from in source_url. Each page begins with its URL on the first line.
 - Use status "found" when a page states the fact outright, and "inferred" only for a close, reasonable reading of what a page says.
-- vertical must be one of: hvac, plumbing, cleaning, other.
+- vertical must be one of: hvac, plumbing, cleaning, roofing, lawn (lawn care/landscaping), other.
 - service_area: cities, counties or ZIP codes exactly as the site lists them.
-- Prices: copy only prices the site states, with low/high/unit/notes, approved=false, source="website", and source_url. For a flat price set low and high to the same number. unit is one of: per job, per hour, per visit, starting at. unit is one of: per job, per hour, per visit, starting at. unit is one of: per job, per hour, per visit, starting at. Put conditions (e.g. "new customers only", "expires 12/31") in notes. Never estimate a price. Discounts and coupons without a stated price are not prices.
+- Prices: copy only prices the site states, with low/high/unit/notes, approved=false, source="website", and source_url. For a flat price set low and high to the same number. unit is one of: per job, per hour, per visit, starting at. Put conditions (e.g. "new customers only", "expires 12/31") in notes. Never estimate a price. Discounts and coupons without a stated price are not prices.
 - staleness_signals: footer copyright year before 2025, hours that differ between pages, expired promotions, old notices. Each one a short sentence naming the page."""
 
 

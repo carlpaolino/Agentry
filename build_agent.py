@@ -3,6 +3,7 @@
     python build_agent.py https://somehvac.com                        # new client, all stages
     python build_agent.py --client somehvac --from-stage prompt       # rerun from a stage
     python build_agent.py --client somehvac --from-stage extract --to-stage extract   # one stage
+    python build_agent.py https://somehvac.com --demo                 # cold-call demo: no review, no prices
     python build_agent.py --list                                      # all clients and their status
 """
 import argparse
@@ -14,6 +15,7 @@ from rich.table import Table
 
 import clients
 import crawl
+import demo
 import deploy
 import extract
 import prompt_builder
@@ -40,6 +42,7 @@ def main() -> None:
     p.add_argument("--client", help="existing client slug")
     p.add_argument("--from-stage", choices=STAGES, default="crawl")
     p.add_argument("--to-stage", choices=STAGES, default="deploy")
+    p.add_argument("--demo", action="store_true", help="skip review: website facts only, no prices")
     p.add_argument("--list", action="store_true")
     args = p.parse_args()
 
@@ -71,7 +74,11 @@ def main() -> None:
         elif stage == "extract":
             extract.run(cdir)
         elif stage == "review":
-            review.run(cdir)
+            if args.demo:
+                demo.prepare(cdir)
+            else:
+                review.run(cdir)
+                clients.upsert(slug, mode="live")
         elif stage == "prompt":
             prompt_builder.run(cdir)
         elif stage == "deploy":

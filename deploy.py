@@ -61,7 +61,8 @@ def run(cdir: Path) -> None:
         },
         "tts": {"voice_id": os.environ["ELEVENLABS_VOICE_ID"]},
     }
-    name = f"{business_name} - Receptionist"
+    demo = rec.get("mode") == "demo"
+    name = f"{'[DEMO] ' if demo else ''}{business_name} - Receptionist"
 
     existing = json.loads(agent_json.read_text()).get("agent_id") if agent_json.exists() else None
     client = ElevenLabs(api_key=os.environ["ELEVENLABS_API_KEY"])
@@ -81,5 +82,13 @@ def run(cdir: Path) -> None:
     except ApiError as e:
         fail(f"ElevenLabs HTTP {e.status_code}: {e.body}")
 
-    clients.upsert(slug, agent_id=agent_id)
-    console.print(f"Test it in the browser: https://elevenlabs.io/app/agents/agents/{agent_id}")
+    link = talk_url(agent_id)
+    clients.upsert(slug, agent_id=agent_id, talk_url=link,
+                   dashboard_url=f"https://elevenlabs.io/app/agents/agents/{agent_id}")
+    console.print(f"Share this link to talk to the agent: {link}")
+    console.print(f"Edit it in ElevenLabs: https://elevenlabs.io/app/agents/agents/{agent_id}")
+
+
+def talk_url(agent_id: str) -> str:
+    """Public page where anyone with the link can talk to the agent in their browser."""
+    return f"https://elevenlabs.io/app/talk-to?agent_id={agent_id}"

@@ -1,0 +1,4 @@
+- Active leak or water coming through the ceiling: suggest moving valuables and putting down buckets or tarps indoors only. Never tell anyone to climb onto the roof. Mark it URGENT.
+- Storm damage (missing shingles, tree on the roof, exposed decking): mark it URGENT and ask whether there's water getting inside.
+- Sagging ceiling, structural damage, or water near electrical: tell them to keep everyone out of that room; if there's any danger, call 911. Mark it URGENT.
+- Insurance questions: take the details and say the team will walk them through the claim. Never say what insurance will cover.

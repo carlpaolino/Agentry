@@ -14,6 +14,7 @@ import json
 import os
 import re
 import sys
+import time
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -25,6 +26,8 @@ from rich.markup import escape
 
 MAX_CANDIDATES = 200
 MAX_PAGES = 10
+RATE_LIMIT_RETRIES = 2
+RATE_LIMIT_WAIT = 30
 console = Console(highlight=False, soft_wrap=True)
 
 PICK_SYSTEM = """You pick pages from a home-service company's website (HVAC, plumbing, cleaning).
@@ -97,6 +100,22 @@ def pick_pages(candidates: list[dict], home: str) -> list[str]:
     return picked[:MAX_PAGES]
 
 
+def scrape(fc: Firecrawl, page: str) -> str:
+    for attempt in range(RATE_LIMIT_RETRIES + 1):
+        try:
+            # Footers often hold hours, phone, license and copyright year; keep them.
+            markdown = (fc.scrape(page, formats=["markdown"], only_main_content=False).markdown
+                        or "").strip()
+            if not markdown:
+                raise RuntimeError("no markdown returned")
+            return markdown
+        except Exception as e:
+            if "rate limit" not in str(e).lower() or attempt == RATE_LIMIT_RETRIES:
+                raise
+            console.print(f"  rate limited; waiting {RATE_LIMIT_WAIT}s before retrying {page}")
+            time.sleep(RATE_LIMIT_WAIT)
+
+
 def run(url: str, cdir: Path) -> None:
     pages_json = cdir / "source" / "pages.json"
     pages_dir = cdir / "source" / "pages"
@@ -124,9 +143,7 @@ def run(url: str, cdir: Path) -> None:
     saved, used = [], set()
     for page in picked:
         try:
-            markdown = (fc.scrape(page, formats=["markdown"]).markdown or "").strip()
-            if not markdown:
-                raise RuntimeError("no markdown returned")
+            markdown = scrape(fc, page)
         except Exception as e:
             console.print(f"  [yellow]skip[/yellow] {page}: {escape(str(e).splitlines()[0][:150])}")
             continue
