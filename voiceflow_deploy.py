@@ -3,14 +3,18 @@
 export_pack(cdir, prompt, first_message): writes agent/chat_instructions.md and agent/voiceflow_setup.md
   (manual steps), every time, with or without a key.
 
-run(cdir, prompt, first_message):
+run(cdir, prompt, first_message, transport=None):
   - prompt/first_message come from prompt_builder.render(..., channel="chat").
-  - httpx against https://realtime-api.voiceflow.com, "Authorization: Bearer <VOICEFLOW_API_KEY>".
-  - No cdir/agent/voiceflow.json yet: POST /v1/stable/project {"name": "<Business> - Website Assistant",
-    "workspaceID": VOICEFLOW_WORKSPACE_ID, "type": "webchat"} and save {"project_id": ...} there.
-  - Every run: main environment (isMain) -> PATCH /v2/stable/agent {"prompt": ...} (the opening line goes
-    in the prompt; fail on unresolvedReferences/unresolvedMentions) -> compile -> publish -> snippet.
+  - httpx against API["base"], "Authorization: Bearer <VOICEFLOW_API_KEY>". transport is passed to
+    httpx.Client so tests can use httpx.MockTransport.
+  - No cdir/agent/voiceflow.json yet: check the workspace, create the project, save {"project_id": ...}.
+  - Every run: main environment (isMain) -> set the prompt (chat_instructions; fail on unresolved
+    references/mentions) -> compile -> publish "build <timestamp>" -> snippet.
   - Writes agent/voiceflow_snippet.html and agent/chat_preview.html (open it locally for demos).
+
+list_workspaces(transport=None): prints id and name of every workspace the key can see.
+
+Every path, field name and expected status is in API below; fix them there when the real API differs.
 """
 import html
 import json
@@ -25,23 +29,58 @@ from rich.markup import escape
 
 import clients
 
-BASE = "https://realtime-api.voiceflow.com"
+API = {
+    "base": "https://realtime-api.voiceflow.com",
+    "get_workspace": {"method": "GET", "path": "/v1/stable/workspace/{workspace_id}", "status": 200,
+                      "result": "workspace", "name": "name"},
+    "list_workspaces": {"method": "GET", "path": "/v1/stable/workspace", "status": 200,
+                        "result": "workspaces", "id": "id", "name": "name"},
+    "create_project": {"method": "POST", "path": "/v1/stable/project", "status": 201,
+                       "name": "name", "workspace": "workspaceID", "type": "type", "type_value": "webchat",
+                       "result": "project", "id": "id"},
+    "environments": {"method": "GET", "path": "/v1/stable/environment", "status": 200,
+                     "result": "environments", "is_main": "isMain", "alias": "alias"},
+    "set_prompt": {"method": "PATCH", "path": "/v2/stable/agent", "status": 200, "prompt": "prompt",
+                   "unresolved": ["unresolvedReferences", "unresolvedMentions"]},
+    "compile": {"method": "PUT", "path": "/v1/stable/environment/{alias}/compile", "status": 200},
+    "publish": {"method": "POST", "path": "/v1/stable/environment/{alias}/publish", "status": 201,
+                "name": "name"},
+    "snippet": {"method": "GET", "path": "/v1/stable/widget/snippet", "status": 200,
+                "version": "published", "result": "snippet"},
+    "query": {"project": "projectID", "alias": "environmentAlias", "version": "version"},
+}
 console = Console(highlight=False, soft_wrap=True)
 
 
 def fail(message: str) -> None:
+    token = os.getenv("VOICEFLOW_API_KEY")
+    if token:
+        message = message.replace(token, "[token]")
     console.print(f"[red]voiceflow deploy failed:[/red] {escape(message)}")
     sys.exit(1)
 
 
-def call(http: httpx.Client, method: str, path: str, ok: int, **kwargs) -> dict:
+def client(transport=None) -> httpx.Client:
+    if not os.getenv("VOICEFLOW_API_KEY"):
+        fail("VOICEFLOW_API_KEY is not set in .env")
+    return httpx.Client(base_url=API["base"], timeout=60, transport=transport,
+                        headers={"Authorization": f"Bearer {os.environ['VOICEFLOW_API_KEY']}"})
+
+
+def call(http: httpx.Client, name: str, path_args: dict | None = None, **kwargs) -> dict:
+    spec = API[name]
+    method, path = spec["method"], spec["path"].format(**(path_args or {}))
     try:
         r = http.request(method, path, **kwargs)
     except httpx.HTTPError as e:
         fail(f"{method} {path}: {e}")
-    if r.status_code != ok:
-        fail(f"{method} {path} -> HTTP {r.status_code}: {r.text}")
-    return r.json()
+    if r.status_code != spec["status"]:
+        hint = " (check VOICEFLOW_API_KEY: wrong, expired or revoked)" if r.status_code == 401 else ""
+        fail(f"{method} {path} -> HTTP {r.status_code}{hint}: {r.text}")
+    try:
+        return r.json()
+    except ValueError:
+        fail(f"{method} {path} -> HTTP {r.status_code} but the body is not JSON: {r.text[:500]}")
 
 
 def chat_instructions(prompt: str, first_message: str) -> str:
@@ -71,7 +110,19 @@ def export_pack(cdir: Path, prompt: str, first_message: str) -> None:
     console.print(f"Wrote {setup}")
 
 
-def run(cdir: Path, prompt: str, first_message: str) -> None:
+def list_workspaces(transport=None) -> None:
+    spec = API["list_workspaces"]
+    with client(transport) as http:
+        data = call(http, "list_workspaces")
+    items = data.get(spec["result"]) if isinstance(data, dict) else data
+    if not isinstance(items, list):
+        console.print(json.dumps(data, indent=2))
+        return
+    for w in items:
+        console.print(f"{w.get(spec['id'], '?')}  {w.get(spec['name'], '')}")
+
+
+def run(cdir: Path, prompt: str, first_message: str, transport=None) -> None:
     for name in ("VOICEFLOW_API_KEY", "VOICEFLOW_WORKSPACE_ID"):
         if not os.getenv(name):
             fail(f"{name} is not set in .env")
@@ -81,47 +132,49 @@ def run(cdir: Path, prompt: str, first_message: str) -> None:
     vf_json = agent_dir / "voiceflow.json"
     rec = clients.get_client(slug) or {}
     business_name = rec.get("business_name") or slug
+    qn = API["query"]
 
-    headers = {"Authorization": f"Bearer {os.environ['VOICEFLOW_API_KEY']}"}
-    with httpx.Client(base_url=BASE, headers=headers, timeout=60) as http:
+    with client(transport) as http:
         project_id = json.loads(vf_json.read_text()).get("project_id") if vf_json.exists() else None
         if project_id:
             console.print(f"Using project {project_id}")
         else:
             ws_id = os.environ["VOICEFLOW_WORKSPACE_ID"]
-            ws = call(http, "GET", f"/v1/stable/workspace/{ws_id}", 200)
-            console.print(f"Workspace: {ws.get('workspace', {}).get('name', ws_id)}")
+            spec = API["get_workspace"]
+            ws = call(http, "get_workspace", {"workspace_id": ws_id})
+            console.print(f"Workspace: {(ws.get(spec['result']) or {}).get(spec['name'], ws_id)}")
+            spec = API["create_project"]
             name = f"{business_name} - Website Assistant"
-            project_id = call(http, "POST", "/v1/stable/project", 201,
-                              json={"name": name, "workspaceID": ws_id, "type": "webchat"})["project"]["id"]
+            body = {spec["name"]: name, spec["workspace"]: ws_id, spec["type"]: spec["type_value"]}
+            project_id = call(http, "create_project", json=body)[spec["result"]][spec["id"]]
             vf_json.write_text(json.dumps({"project_id": project_id}, indent=2))
             console.print(f"Created project {project_id} ({name})")
-        q = {"projectID": project_id}
+        q = {qn["project"]: project_id}
 
-        envs = call(http, "GET", "/v1/stable/environment", 200, params=q)["environments"]
-        main = next((e for e in envs if e.get("isMain")), None)
+        spec = API["environments"]
+        envs = call(http, "environments", params=q)[spec["result"]]
+        main = next((e for e in envs if e.get(spec["is_main"])), None)
         if main is None:
-            fail(f"project {project_id} has no main environment: {[e.get('alias') for e in envs]}")
-        alias = main["alias"]
+            fail(f"project {project_id} has no main environment: {[e.get(spec['alias']) for e in envs]}")
+        alias = main[spec["alias"]]
+        qa = {**q, qn["alias"]: alias}
 
+        spec = API["set_prompt"]
         full_prompt = chat_instructions(prompt, first_message)
-        res = call(http, "PATCH", "/v2/stable/agent", 200, params={**q, "environmentAlias": alias},
-                   json={"prompt": full_prompt})
-        unresolved = res.get("unresolvedReferences") or []
-        mentions = res.get("unresolvedMentions") or []
-        if unresolved or mentions:
-            fail(f"prompt saved to the draft but NOT published; unresolved references {unresolved}, "
-                 f"mentions {mentions}")
+        res = call(http, "set_prompt", params=qa, json={spec["prompt"]: full_prompt})
+        problems = {k: res.get(k) for k in spec["unresolved"] if res.get(k)}
+        if problems:
+            fail(f"prompt saved to the draft but NOT published; unresolved: {problems}")
         console.print(f"Set the prompt on '{alias}' ({len(full_prompt):,} chars)")
 
-        call(http, "PUT", f"/v1/stable/environment/{alias}/compile", 200, params=q)
+        call(http, "compile", {"alias": alias}, params=q)
         console.print("Compiled")
-        release = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-        call(http, "POST", f"/v1/stable/environment/{alias}/publish", 201, params=q, json={"name": release})
+        release = "build " + datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        call(http, "publish", {"alias": alias}, params=q, json={API["publish"]["name"]: release})
         console.print(f"Published release '{release}'")
 
-        snippet = call(http, "GET", "/v1/stable/widget/snippet", 200,
-                       params={**q, "environmentAlias": alias, "version": "published"})["snippet"]
+        spec = API["snippet"]
+        snippet = call(http, "snippet", params={**qa, qn["version"]: spec["version"]})[spec["result"]]
 
     (agent_dir / "voiceflow_snippet.html").write_text(snippet + "\n")
     title = html.escape(business_name)
