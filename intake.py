@@ -37,11 +37,12 @@ Rules:
 - faqs: the 10-15 questions this business's customers ask most, each with the answer the business gives.
   Use answers stated in the notes or on the website only; skip a question if you don't know its answer.
   Never put a price or dollar amount in a faq; prices go only in price_items, which the operator approves.
-- escalation_rules: situations that go straight to a human (emergencies, angry customers, big commercial
-  jobs, anything the notes name). One short line each.
+- escalation_rules: situations the notes or website say go straight to a human. One short line each.
+  Only situations they name; don't add your own.
 - brand_voice: one or two sentences on how they talk to customers, only if the notes say so.
 - price_items: only prices the owner stated in the notes, as ranges (low/high), with unit and notes.
-- service_zips: 5-digit ZIPs only. service_cities: as written, e.g. "Marietta, GA".
+- service_zips: 5-digit ZIPs only. service_cities: as written, e.g. "Marietta, GA". Both from the notes
+  only; leave both empty if the notes name no area (the website's area is filled in separately).
 - regular_hours, emergency_service/emergency_hours, typical_lead_time, residential/commercial:
   from the notes, else the website, else leave empty/false.
 - renters_ok: true/false only if the notes or website say whether they work for renters; else null."""
@@ -147,10 +148,15 @@ def run(cdir: Path, notes: str, basics: dict) -> None:
         lead_extra_fields=d.lead_extra_fields, notify=d.notify, escalation_rules=d.escalation_rules,
         brand_voice=d.brand_voice, notes=d.notes,
     )
+    low_notes = notes.lower()
+    zips = [z.strip() for z in d.service_zips
+            if z.strip().isdigit() and len(z.strip()) == 5 and z.strip() in notes]
+    cities = [c for c in d.service_cities if c.split(",")[0].strip().lower() in low_notes]
+    if not zips and not cities:
+        zips, cities = start_policy.service_zips, start_policy.service_cities
     policy = FitPolicy(
-        service_zips=[z for z in d.service_zips if z.strip().isdigit() and len(z.strip()) == 5]
-        or start_policy.service_zips,
-        service_cities=d.service_cities or start_policy.service_cities,
+        service_zips=zips,
+        service_cities=cities,
         services_offered=d.services_offered or start_policy.services_offered,
         services_not_offered=d.services_not_offered or start_policy.services_not_offered,
         residential=d.residential or start_policy.residential, commercial=d.commercial,
@@ -169,12 +175,51 @@ def run(cdir: Path, notes: str, basics: dict) -> None:
     have = {i.service.lower() for i in pricing.items}
     pricing = pricing.model_copy(update={"items": pricing.items + [p for p in new_prices
                                                                    if p.service.lower() not in have]})
+    conflicts = flag_wont_quote(pricing, intake.will_not_quote)
     clients.save_model(cdir / "intake.json", intake)
     clients.save_model(cdir / "policy.json", policy)
     clients.save_model(pricing_path, pricing)
     print(f"Intake filled from the notes: {len(intake.faqs)} FAQs, {len(intake.escalation_rules)} "
           f"escalation rules, {len(new_prices)} prices to approve.")
+    for item in conflicts:
+        state = "already approved, left as is" if item.approved else "kept unapproved"
+        print(f"WARNING: price '{item.service}' conflicts with what the owner won't quote "
+              f"('{intake.will_not_quote}'); {state}.")
     _mark(cdir, intake)
+
+
+CONFLICT_NOTE = "Conflicts with what the owner won't quote"
+_SAME_JOB = {"installation": "install", "installs": "install", "installing": "install",
+             "installed": "install", "replace": "install", "replacement": "install",
+             "replacing": "install", "replaced": "install"}
+_GENERIC = {"the", "and", "for", "any", "all", "our", "over", "with", "full", "new", "system", "job",
+            "service", "work", "phone", "price", "quote", "estimate", "tech", "always", "first", "look",
+            "come", "out", "has", "have", "need", "home", "house", "unit", "per", "visit", "call"}
+
+
+def _job_words(text: str) -> set[str]:
+    out = set()
+    for w in re.findall(r"[a-z]+", text.lower()):
+        if w in _GENERIC:
+            continue
+        w = _SAME_JOB.get(w, w[:-1] if w.endswith("s") and len(w) > 3 else w)
+        w = _SAME_JOB.get(w, w)
+        if len(w) > 2 and w not in _GENERIC:
+            out.add(w)
+    return out
+
+
+def flag_wont_quote(pricing: PricingSheet, will_not_quote: str) -> list[PriceItem]:
+    """Note every price item whose service shares a job word with will_not_quote. Approved items keep
+    their approval (only the operator changes that); the rest stay unapproved."""
+    banned = _job_words(will_not_quote)
+    hits = []
+    for item in pricing.items:
+        if banned & _job_words(item.service):
+            if CONFLICT_NOTE not in item.notes:
+                item.notes = f"{item.notes} {CONFLICT_NOTE}.".strip()
+            hits.append(item)
+    return hits
 
 
 def _mark(cdir: Path, intake: Intake) -> None:

@@ -100,7 +100,8 @@ def main() -> None:
             prompt_builder.run(cdir)
         elif stage == "deploy":
             deploy.run(cdir)
-        clients.upsert(slug, status=DONE[stage])
+        done = "intake" if stage == "review" and notes_text is not None else DONE[stage]
+        clients.upsert(slug, status=done)
 
     console.print(f"[green]Done: {slug}[/green]")
 
