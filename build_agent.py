@@ -4,10 +4,12 @@
     python build_agent.py --client somehvac --from-stage prompt       # rerun from a stage
     python build_agent.py --client somehvac --from-stage extract --to-stage extract   # one stage
     python build_agent.py https://somehvac.com --demo                 # cold-call demo: no review, no prices
+    python build_agent.py --client somehvac --from-stage review --notes notes.txt   # call notes -> intake
     python build_agent.py --list                                      # all clients and their status
 """
 import argparse
 import sys
+from pathlib import Path
 
 from dotenv import load_dotenv
 from rich.console import Console
@@ -18,6 +20,7 @@ import crawl
 import demo
 import deploy
 import extract
+import intake
 import prompt_builder
 import review
 
@@ -43,12 +46,24 @@ def main() -> None:
     p.add_argument("--from-stage", choices=STAGES, default="crawl")
     p.add_argument("--to-stage", choices=STAGES, default="deploy")
     p.add_argument("--demo", action="store_true", help="skip review: website facts only, no prices")
+    p.add_argument("--notes", help="file of call notes; fills intake instead of review")
     p.add_argument("--list", action="store_true")
     args = p.parse_args()
 
     if args.list:
         print_registry()
         return
+
+    notes_text = None
+    if args.notes:
+        if args.demo:
+            sys.exit("Use --notes or --demo, not both: each replaces the review stage.")
+        notes_path = Path(args.notes)
+        if not notes_path.is_file():
+            sys.exit(f"Notes file not found: {notes_path}")
+        notes_text = notes_path.read_text()
+        if not notes_text.strip():
+            sys.exit(f"Notes file is empty: {notes_path}")
 
     if args.url:
         slug = clients.slug_for(args.url)
@@ -74,7 +89,9 @@ def main() -> None:
         elif stage == "extract":
             extract.run(cdir)
         elif stage == "review":
-            if args.demo:
+            if notes_text is not None:
+                intake.run(cdir, notes_text, {"business_name": "", "employee_count": ""})
+            elif args.demo:
                 demo.prepare(cdir)
             else:
                 review.run(cdir)

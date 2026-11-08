@@ -10,6 +10,7 @@ run(cdir, notes, basics):
 """
 import json
 import os
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -19,6 +20,8 @@ from pydantic import BaseModel
 import clients
 import demo
 from schema import FAQ, BusinessProfile, FitPolicy, Intake, PriceItem, PricingSheet
+
+PRICE_RE = re.compile(r"\$\s*\d|\d\s*dollars?\b", re.I)   # FAQs reach the prompt unapproved
 
 SYSTEM = """You turn a sales rep's notes from calls with a home-service business (HVAC, plumbing, roofing,
 lawn care, cleaning) into the setup record for that business's AI receptionist.
@@ -33,13 +36,15 @@ Rules:
   avg_job_value (dollars), monthly_call_volume. Convert ranges to the midpoint.
 - faqs: the 10-15 questions this business's customers ask most, each with the answer the business gives.
   Use answers stated in the notes or on the website only; skip a question if you don't know its answer.
+  Never put a price or dollar amount in a faq; prices go only in price_items, which the operator approves.
 - escalation_rules: situations that go straight to a human (emergencies, angry customers, big commercial
   jobs, anything the notes name). One short line each.
 - brand_voice: one or two sentences on how they talk to customers, only if the notes say so.
 - price_items: only prices the owner stated in the notes, as ranges (low/high), with unit and notes.
 - service_zips: 5-digit ZIPs only. service_cities: as written, e.g. "Marietta, GA".
-- regular_hours, emergency_service/emergency_hours, typical_lead_time, residential/commercial,
-  renters_ok: from the notes, else the website, else leave empty/false."""
+- regular_hours, emergency_service/emergency_hours, typical_lead_time, residential/commercial:
+  from the notes, else the website, else leave empty/false.
+- renters_ok: true/false only if the notes or website say whether they work for renters; else null."""
 
 
 class _FAQ(BaseModel):
@@ -81,7 +86,7 @@ class _Draft(BaseModel):   # every field required: structured outputs rejects bi
     services_not_offered: list[str]
     residential: bool
     commercial: bool
-    renters_ok: bool
+    renters_ok: Optional[bool]
     regular_hours: str
     emergency_service: bool
     emergency_hours: str
@@ -138,7 +143,7 @@ def run(cdir: Path, notes: str, basics: dict) -> None:
         missed_calls_per_week=d.missed_calls_per_week, booking_rate_pct=d.booking_rate_pct,
         avg_job_value=d.avg_job_value, monthly_call_volume=d.monthly_call_volume,
         will_not_quote=d.will_not_quote, booking_rules=d.booking_rules,
-        faqs=[FAQ(question=f.question, answer=f.answer) for f in d.faqs],
+        faqs=[FAQ(question=f.question, answer=f.answer) for f in d.faqs if not PRICE_RE.search(f.answer)],
         lead_extra_fields=d.lead_extra_fields, notify=d.notify, escalation_rules=d.escalation_rules,
         brand_voice=d.brand_voice, notes=d.notes,
     )
@@ -149,7 +154,8 @@ def run(cdir: Path, notes: str, basics: dict) -> None:
         services_offered=d.services_offered or start_policy.services_offered,
         services_not_offered=d.services_not_offered or start_policy.services_not_offered,
         residential=d.residential or start_policy.residential, commercial=d.commercial,
-        renters_ok=d.renters_ok, regular_hours=d.regular_hours or start_policy.regular_hours,
+        renters_ok=start_policy.renters_ok if d.renters_ok is None else d.renters_ok,
+        regular_hours=d.regular_hours or start_policy.regular_hours,
         emergency_service=d.emergency_service, emergency_hours=d.emergency_hours,
         typical_lead_time=d.typical_lead_time or "usually next business day",
         callback_promise=start_policy.callback_promise,
