@@ -5,9 +5,11 @@
     python build_agent.py --client somehvac --from-stage extract --to-stage extract   # one stage
     python build_agent.py https://somehvac.com --demo                 # cold-call demo: no review, no prices
     python build_agent.py --client somehvac --from-stage review --notes notes.txt   # call notes -> intake
+    python build_agent.py --client somehvac --from-stage prompt --channel both   # phone + website chat
     python build_agent.py --list                                      # all clients and their status
 """
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -23,6 +25,7 @@ import extract
 import intake
 import prompt_builder
 import review
+import voiceflow_deploy
 
 STAGES = ["crawl", "extract", "review", "prompt", "deploy"]
 DONE = {"crawl": "crawled", "extract": "extracted", "review": "reviewed",
@@ -38,6 +41,10 @@ def print_registry() -> None:
     console.print(t)
 
 
+def render_chat(cdir: Path) -> tuple[str, str]:
+    return prompt_builder.render(cdir.name, *prompt_builder.load_inputs(cdir), channel="chat")
+
+
 def main() -> None:
     load_dotenv(".env")
     p = argparse.ArgumentParser()
@@ -47,8 +54,12 @@ def main() -> None:
     p.add_argument("--to-stage", choices=STAGES, default="deploy")
     p.add_argument("--demo", action="store_true", help="skip review: website facts only, no prices")
     p.add_argument("--notes", help="file of call notes; fills intake instead of review")
+    p.add_argument("--channel", choices=["phone", "chat", "both"], default="phone",
+                   help="phone = ElevenLabs, chat = Voiceflow (paste pack, API if VOICEFLOW_API_KEY is set)")
     p.add_argument("--list", action="store_true")
     args = p.parse_args()
+    phone = args.channel in ("phone", "both")
+    chat = args.channel in ("chat", "both")
 
     if args.list:
         print_registry()
@@ -97,9 +108,20 @@ def main() -> None:
                 review.run(cdir)
                 clients.upsert(slug, mode="live")
         elif stage == "prompt":
-            prompt_builder.run(cdir)
+            if phone:
+                prompt_builder.run(cdir)
+            if chat:
+                voiceflow_deploy.export_pack(cdir, *render_chat(cdir))
         elif stage == "deploy":
-            deploy.run(cdir)
+            if phone:
+                deploy.run(cdir)
+            if chat and os.getenv("VOICEFLOW_API_KEY"):
+                voiceflow_deploy.run(cdir, *render_chat(cdir))
+            elif chat:
+                console.print("No Voiceflow key: paste agent/chat_instructions.md by hand "
+                              "(see agent/voiceflow_setup.md)")
+                if not phone:
+                    continue
         done = "intake" if stage == "review" and notes_text is not None else DONE[stage]
         clients.upsert(slug, status=done)
 

@@ -1,5 +1,8 @@
 """Chat channel - deploy: create or update this client's Voiceflow web-chat agent.
 
+export_pack(cdir, prompt, first_message): writes agent/chat_instructions.md and agent/voiceflow_setup.md
+  (manual steps), every time, with or without a key.
+
 run(cdir, prompt, first_message):
   - prompt/first_message come from prompt_builder.render(..., channel="chat").
   - httpx against https://realtime-api.voiceflow.com, "Authorization: Bearer <VOICEFLOW_API_KEY>".
@@ -41,6 +44,33 @@ def call(http: httpx.Client, method: str, path: str, ok: int, **kwargs) -> dict:
     return r.json()
 
 
+def chat_instructions(prompt: str, first_message: str) -> str:
+    return f'Start every new chat with: "{first_message}"\n\n{prompt}'
+
+
+def export_pack(cdir: Path, prompt: str, first_message: str) -> None:
+    """Paste pack for building the chat agent by hand: agent/chat_instructions.md + voiceflow_setup.md."""
+    agent_dir = cdir / "agent"
+    agent_dir.mkdir(parents=True, exist_ok=True)
+    business_name = (clients.get_client(cdir.name) or {}).get("business_name") or cdir.name
+    instructions = agent_dir / "chat_instructions.md"
+    instructions.write_text(chat_instructions(prompt, first_message))
+    setup = agent_dir / "voiceflow_setup.md"
+    setup.write_text(
+        f"# Set up the {business_name} website chat in Voiceflow\n\n"
+        f"1. In Voiceflow, create a new web-chat agent named \"{business_name} - Website Assistant\".\n"
+        f"2. Open the agent's global prompt and replace it with the whole of chat_instructions.md\n"
+        f"   (in this folder). Paste it as is; it contains no {{}} or backticks, which Voiceflow would\n"
+        f"   read as references.\n"
+        f"3. Publish the agent.\n"
+        f"4. Open the widget settings, copy the embed snippet, and paste it into {business_name}'s website\n"
+        f"   just before the closing </body> tag of every page the chat should appear on.\n"
+        f"5. Open the site, start a chat, and check it greets visitors with the opening line at the top of\n"
+        f"   chat_instructions.md.\n")
+    console.print(f"Wrote {instructions} ({len(instructions.read_text()):,} chars)")
+    console.print(f"Wrote {setup}")
+
+
 def run(cdir: Path, prompt: str, first_message: str) -> None:
     for name in ("VOICEFLOW_API_KEY", "VOICEFLOW_WORKSPACE_ID"):
         if not os.getenv(name):
@@ -74,7 +104,7 @@ def run(cdir: Path, prompt: str, first_message: str) -> None:
             fail(f"project {project_id} has no main environment: {[e.get('alias') for e in envs]}")
         alias = main["alias"]
 
-        full_prompt = f'Start every new chat with: "{first_message}"\n\n{prompt}'
+        full_prompt = chat_instructions(prompt, first_message)
         res = call(http, "PATCH", "/v2/stable/agent", 200, params={**q, "environmentAlias": alias},
                    json={"prompt": full_prompt})
         unresolved = res.get("unresolvedReferences") or []

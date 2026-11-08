@@ -197,4 +197,10 @@ def render(slug: str, profile: BusinessProfile, policy: FitPolicy, pricing: Pric
     leftover = sorted(set(re.findall(r"\$[a-z_]+", prompt)))
     if leftover:
         fail(f"placeholders left in the prompt: {', '.join(leftover)}")
+    if channel == "chat":   # Voiceflow reads {name} and `name` as references
+        prompt, first_message = (s.replace("`", '"').replace("{", "(").replace("}", ")")
+                                 for s in (prompt, first_message))
+        left = sorted({c for c in prompt + first_message if c in "{}`"})
+        if left:
+            fail(f"chat text still contains {' '.join(left)}; Voiceflow would treat it as a reference")
     return prompt, first_message
