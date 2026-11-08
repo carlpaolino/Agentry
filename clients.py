@@ -15,6 +15,7 @@ clients/
     agent/voiceflow.json        voiceflow_deploy  {"project_id"}
     agent/voiceflow_snippet.html  voiceflow_deploy  (embed <script> for the website)
     agent/chat_preview.html     voiceflow_deploy  (local demo page)
+    rehearsals/<timestamp>.md   chat_rehearsal  (terminal test chats of agent/chat_instructions.md)
 """
 import json
 import re
