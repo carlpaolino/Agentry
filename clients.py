@@ -12,6 +12,9 @@ clients/
     agent/prompt.md             prompt
     agent/first_message.txt     prompt
     agent/agent.json            deploy  {"agent_id"}
+    agent/voiceflow.json        voiceflow_deploy  {"project_id"}
+    agent/voiceflow_snippet.html  voiceflow_deploy  (embed <script> for the website)
+    agent/chat_preview.html     voiceflow_deploy  (local demo page)
 """
 import json
 import re

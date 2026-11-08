@@ -1,7 +1,8 @@
 """Stage 5 - deploy: create or update this client's ElevenLabs agent.
 
-run(cdir):
-  - Read cdir/agent/prompt.md and first_message.txt (and the registry record for the name).
+run(cdir): read cdir/agent/prompt.md and first_message.txt, then deploy_text(slug, prompt, first_message).
+deploy_text(slug, prompt, first_message):
+  - Name from the registry record.
   - ElevenLabs(api_key=os.environ["ELEVENLABS_API_KEY"]).
   - conversation_config = {"agent": {"first_message": ..., "language": "en",
         "prompt": {"prompt": ..., "llm": <a fast model from ElevenLabs' supported list>}},
@@ -34,15 +35,18 @@ def fail(message: str) -> None:
 
 
 def run(cdir: Path) -> None:
-    slug = cdir.name
     agent_dir = cdir / "agent"
     prompt_path = agent_dir / "prompt.md"
     first_path = agent_dir / "first_message.txt"
-    agent_json = agent_dir / "agent.json"
-
     for path in (prompt_path, first_path):
         if not path.exists():
             fail(f"{path} not found; run the prompt stage first.")
+    deploy_text(cdir.name, prompt_path.read_text(), first_path.read_text().strip())
+
+
+def deploy_text(slug: str, prompt: str, first_message: str) -> None:
+    """Create or update the client's ElevenLabs agent with this prompt and opening line."""
+    agent_json = clients.client_dir(slug) / "agent" / "agent.json"
     for name in ("ELEVENLABS_API_KEY", "ELEVENLABS_VOICE_ID"):
         if not os.getenv(name):
             fail(f"{name} is not set in .env")
@@ -51,10 +55,10 @@ def run(cdir: Path) -> None:
     business_name = rec.get("business_name") or slug
     conversation_config = {
         "agent": {
-            "first_message": first_path.read_text().strip(),
+            "first_message": first_message,
             "language": "en",
             "prompt": {
-                "prompt": prompt_path.read_text(),
+                "prompt": prompt,
                 "llm": LLM,
                 "reasoning_effort": REASONING_EFFORT,
             },
