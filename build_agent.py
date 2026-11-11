@@ -6,6 +6,7 @@
     python build_agent.py https://somehvac.com --demo                 # cold-call demo: no review, no prices
     python build_agent.py --client somehvac --from-stage review --notes notes.txt   # call notes -> intake
     python build_agent.py --client somehvac --from-stage prompt --channel both   # phone + website chat
+    python build_agent.py --client somehvac --from-stage crawl --to-stage crawl --recrawl
     python build_agent.py --list                                      # all clients and their status
 """
 import argparse
@@ -56,6 +57,8 @@ def main() -> None:
     p.add_argument("--notes", help="file of call notes; fills intake instead of review")
     p.add_argument("--channel", choices=["phone", "chat", "both"], default="phone",
                    help="phone = ElevenLabs, chat = Voiceflow (paste pack, API if VOICEFLOW_API_KEY is set)")
+    p.add_argument("--recrawl", action="store_true",
+                   help="fetch every crawled page again, ignoring the 14-day cache")
     p.add_argument("--list", action="store_true")
     args = p.parse_args()
     phone = args.channel in ("phone", "both")
@@ -96,7 +99,7 @@ def main() -> None:
         if stage == "crawl":
             if not rec.get("website"):
                 sys.exit("No website for this client; pass the URL.")
-            crawl.run(rec["website"], cdir)
+            crawl.run(rec["website"], cdir, recrawl=args.recrawl)
         elif stage == "extract":
             extract.run(cdir)
         elif stage == "review":

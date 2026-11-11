@@ -3,8 +3,10 @@
 clients/
   registry.json                 {slug: {slug, website, business_name, vertical, status, agent_id, updated_at}}
   <slug>/
-    source/pages/*.md           crawl
-    source/pages.json           crawl  [{"url", "file"}]
+    source/pages/*.md           crawl  (first line is the page URL)
+    source/sources.json         crawl  [{url, file, kind, method, chars, fetched_at}]
+    source/discovered_links.json  crawl  {page_url: [links]} for the next pass
+    source/pages.json           crawl  (older manifest; converted into sources.json, then left in place)
     profile.json                extract
     pricing.json                extract (draft) -> review (approved)
     policy.json                 review

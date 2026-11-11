@@ -1,7 +1,8 @@
 """Stage 2 - extract: pages -> profile.json + draft pricing.json.
 
 run(cdir):
-  - Read every cdir/source/pages/*.md (each starts with its URL).
+  - Read the pages listed in cdir/source/sources.json (each file starts with its URL).
+    With no manifest, read every cdir/source/pages/*.md.
   - ONE Claude call (model "claude-sonnet-5-5") with structured output = schema.ExtractionResult.
     Prompt rules: cite source_url for every found value; status "missing" rather than guess;
     copy prices only if the site states them (low/high/unit/notes), approved=False, source="website";
@@ -11,6 +12,7 @@ run(cdir):
   - clients.upsert(slug, business_name=..., vertical=...).
   - Print a rich table: field, value (truncated to 60 chars), status (green found, yellow inferred, red missing).
 """
+import json
 import os
 import re
 import sys
@@ -86,9 +88,19 @@ def fail(message: str) -> None:
 
 
 def load_pages(cdir: Path) -> str:
-    files = sorted((cdir / "source" / "pages").glob("*.md"))
+    sources = cdir / "source" / "sources.json"
+    if sources.is_file():
+        files = []
+        for entry in json.loads(sources.read_text()):
+            path = cdir / entry["file"]
+            if path.is_file():
+                files.append(path)
+            else:
+                console.print(f"[yellow]missing[/yellow] {entry['file']}")
+    else:
+        files = sorted((cdir / "source" / "pages").glob("*.md"))
     if not files:
-        fail(f"no pages in {cdir / 'source' / 'pages'}; run the crawl stage first.")
+        fail(f"no pages in {cdir / 'source'}; run the crawl stage first.")
     parts = []
     for f in files:
         text = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", f.read_text())
